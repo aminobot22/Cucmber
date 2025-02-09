@@ -57,19 +57,21 @@ export const StreamView: React.FC = () => {
         null,
         null
       );
-      const microphoneTrack = await AgoraRTC.createMicrophoneAudioTrack({
-        encoderConfig: 'speech_standard',
-        AEC: true,
-        ANS: true,
-      });
-      await client.publish([ microphoneTrack]);
+      if (role === 'audience'){
+        const microphoneTrack = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: 'speech_standard',
+          AEC: true,
+          ANS: true,
+        });
+        await client.publish([ microphoneTrack]);
 
-      setIsMicMuted(true)
-      setLocalTracks(prev => ({
-        ...prev,
-        audioTrack: microphoneTrack,
-      }));
-      return true;
+        setIsMicMuted(true)
+        setLocalTracks(prev => ({
+          ...prev,
+          audioTrack: microphoneTrack,
+        }));
+      }
+        return true;
     } catch (error: any) {
       console.error('Connection error:', error);
       setError('Failed to connect. Please try again.');
@@ -113,8 +115,21 @@ export const StreamView: React.FC = () => {
 
       localTrackRef.current = customVideoTrack;
       localAudioTrackRef.current = customAudioTrack;
+      
+      const microphoneTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'speech_standard',
+        AEC: true,
+        ANS: true,
+      });
 
-      await client.publish([customVideoTrack, customAudioTrack]);
+      // Publish all tracks
+      await client.publish([customVideoTrack, customAudioTrack, microphoneTrack]);
+
+      // Update state with new tracks
+      setLocalTracks(prev => ({
+        ...prev,
+        audioTrack: microphoneTrack,
+      }));
 
       try {
         await videoElement.play();
