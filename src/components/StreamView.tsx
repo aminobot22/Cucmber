@@ -64,7 +64,7 @@ export const StreamView: React.FC = () => {
       });
       await client.publish([ microphoneTrack]);
 
-      // Update state with new tracks
+      setIsMicMuted(true)
       setLocalTracks(prev => ({
         ...prev,
         audioTrack: microphoneTrack,
