@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import AgoraRTC, { IAgoraRTCClient, ILocalVideoTrack, ILocalAudioTrack } from 'agora-rtc-sdk-ng';
 import { useAgora } from '../context/AgoraContext';
-import { Play, Pause, Volume2, VolumeX, Maximize2 } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize2, Video, VideoOff,Mic,MicOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Chat } from './Chat';
 
@@ -20,9 +20,21 @@ export const StreamView: React.FC = () => {
 
   // UI States
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  const [localTracks, setLocalTracks] = useState<{
+    screenVideoTrack: ILocalVideoTrack | null;
+    audioTrack: ILocalAudioTrack | null;
+    screenAudioTrack: ILocalAudioTrack | null;
+  }>({
+    screenVideoTrack: null,
+    audioTrack: null,
+    screenAudioTrack: null,
+  });
 
   // Validate channel name before attempting connection
   useEffect(() => {
@@ -45,6 +57,18 @@ export const StreamView: React.FC = () => {
         null,
         null
       );
+      const microphoneTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: 'speech_standard',
+        AEC: true,
+        ANS: true,
+      });
+      await client.publish([ microphoneTrack]);
+
+      // Update state with new tracks
+      setLocalTracks(prev => ({
+        ...prev,
+        audioTrack: microphoneTrack,
+      }));
       return true;
     } catch (error: any) {
       console.error('Connection error:', error);
@@ -63,6 +87,7 @@ export const StreamView: React.FC = () => {
       const videoElement = videoRef.current;
       videoElement.src = URL.createObjectURL(videoFile);
       videoElement.muted = isMuted;
+      
 
       await new Promise<void>((resolve) => {
         const handleMetadata = () => {
@@ -157,6 +182,17 @@ export const StreamView: React.FC = () => {
         localAudioTrackRef.current = null;
       }
 
+      if (localTracks.audioTrack) {
+        localTracks.audioTrack.stop();
+        localTracks.audioTrack.close();
+      }
+
+      setLocalTracks({
+        screenVideoTrack: null,
+        audioTrack: null,
+        screenAudioTrack: null,
+      });
+
       // Leave the channel if connected
       if (client.connectionState === 'CONNECTED') {
         try {
@@ -177,6 +213,7 @@ export const StreamView: React.FC = () => {
         setIsConnecting(false);
         setIsPlaying(false);
         setError(null);
+        setIsMicMuted(false);
       }
     } catch (error) {
       console.error('Cleanup error:', error);
@@ -254,6 +291,17 @@ export const StreamView: React.FC = () => {
     setIsMuted(!isMuted);
   };
 
+  const toggleMicMute = () => {
+    if (!localTracks.audioTrack) return;
+    
+    try {
+      localTracks.audioTrack.setEnabled(!isMicMuted);
+      setIsMicMuted(!isMicMuted);
+    } catch (error) {
+      console.error('Failed to toggle microphone:', error);
+    }
+  };
+
   const toggleFullscreen = () => {
     const videoElement = role === 'host' ? videoRef.current : remoteVideoRef.current;
     if (!videoElement) return;
@@ -263,6 +311,37 @@ export const StreamView: React.FC = () => {
     } else {
       videoElement.requestFullscreen();
     }
+  };
+
+  // Audience controls
+  const toggleAudioMute = () => {
+    if (role !== 'audience' || !isLive) return;
+    const remoteUsers = client.remoteUsers;
+    remoteUsers.forEach(user => {
+      if (user.audioTrack) {
+        if (isMuted) {
+          user.audioTrack.play();
+        } else {
+          user.audioTrack.stop();
+        }
+      }
+    });
+    setIsMuted(!isMuted);
+  };
+
+  const toggleVideoMute = () => {
+    if (role !== 'audience' || !isLive) return;
+    const remoteUsers = client.remoteUsers;
+    remoteUsers.forEach(user => {
+      if (user.videoTrack) {
+        if (isVideoMuted) {
+          user.videoTrack.play(remoteVideoRef.current);
+        } else {
+          user.videoTrack.stop();
+        }
+      }
+    });
+    setIsVideoMuted(!isVideoMuted);
   };
 
   return (
@@ -318,7 +397,7 @@ export const StreamView: React.FC = () => {
           
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="flex items-center space-x-4">
-              {role === 'host' && (
+              {role === 'host' ? (
                 <>
                   <button
                     onClick={togglePlay}
@@ -340,6 +419,53 @@ export const StreamView: React.FC = () => {
                       <VolumeX className="w-6 h-6 text-white" />
                     ) : (
                       <Volume2 className="w-6 h-6 text-white" />
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleMicMute}
+                    className="p-2 rounded-full bg-purple-500/20 hover:bg-purple-500/40 transition-colors"
+                    disabled={!isLive}
+                  >
+                    {isMicMuted ? (
+                      <Mic className="w-6 h-6 text-white" />
+                    ) : (
+                      <MicOff className="w-6 h-6 text-white" />
+                    )}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={toggleVideoMute}
+                    className="p-2 rounded-full bg-purple-500/20 hover:bg-purple-500/40 transition-colors"
+                    disabled={!isLive}
+                  >
+                    {isVideoMuted ? (
+                      <VideoOff className="w-6 h-6 text-white" />
+                    ) : (
+                      <Video className="w-6 h-6 text-white" />
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleAudioMute}
+                    className="p-2 rounded-full bg-purple-500/20 hover:bg-purple-500/40 transition-colors"
+                    disabled={!isLive}
+                  >
+                    {isMuted ? (
+                      <VolumeX className="w-6 h-6 text-white" />
+                    ) : (
+                      <Volume2 className="w-6 h-6 text-white" />
+                    )}
+                  </button>
+                  <button
+                    onClick={toggleMicMute}
+                    className="p-2 rounded-full bg-purple-500/20 hover:bg-purple-500/40 transition-colors"
+                    disabled={!isLive}
+                  >
+                    {isMicMuted ? (
+                      <Mic className="w-6 h-6 text-white" />
+                    ) : (
+                      <MicOff className="w-6 h-6 text-white" />
                     )}
                   </button>
                 </>
