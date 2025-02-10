@@ -93,7 +93,9 @@ export const StreamView: React.FC = () => {
   // Microphone setup
   const setupMicrophone = async () => {
     try {
-      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+              encoderConfig: 'high_quality'
+      });
       microphoneTrackRef.current = audioTrack;
       await client.publish([audioTrack]);
       return true;
